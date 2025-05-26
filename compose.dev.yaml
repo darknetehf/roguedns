@@ -1,0 +1,24 @@
+services:
+  pihole:
+    ports:
+      # DNS Ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Default HTTP Port
+      - "80:80/tcp"
+    volumes:
+      - ./data/pihole:/etc/pihole
+    restart: unless-stopped
+
+  pdns-server:
+    restart: unless-stopped
+    volumes:
+      - ./data/pdns-server:/data
+
+  powerdns-admin:
+    restart: unless-stopped
+    volumes:
+      - ./data/powerdns-admin:/data
+    post_start:
+      - command: chown -R 100:101 /data
+        user: root

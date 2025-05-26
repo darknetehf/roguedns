@@ -1,0 +1,87 @@
+services:
+  pihole:
+    image: pihole/pihole:latest
+    hostname: pihole
+    ports:
+      # DNS Ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Default HTTP Port
+      - "443:443/tcp"
+      # # Default HTTPs Port. FTL will generate a self-signed certificate
+      # - "443:443/tcp"
+      # # Uncomment the line below if you are using Pi-hole as your DHCP server
+      # - "67:67/udp"
+      # # Uncomment the line below if you are using Pi-hole as your NTP server
+      # - "123:123/udp"
+    environment:
+      # Set the appropriate timezone for your location (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), e.g:
+      TZ: 'Atlantic/Reykjavik'
+      # If using Docker's default `bridge` network setting the dns listening mode should be set to 'all'
+      FTLCONF_dns_listeningMode: 'all'
+      # Use our own forwarder
+      FTLCONF_dns_upstreams: "$PDNS_HOST"
+    env_file:
+      - path: ./.env
+        required: true
+    cap_add:
+      # See https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+      # Required if you are using Pi-hole as your DHCP server, else not needed
+      - NET_ADMIN
+      # Required if you are using Pi-hole as your NTP client to be able to set the host's system time
+      - SYS_TIME
+      # Optional, if Pi-hole should get some more processing time
+      - SYS_NICE
+    depends_on:
+      pdns-server:
+        condition: service_healthy
+    restart: always
+    #  - './etc-pihole:/etc/pihole'
+    volumes:
+      - pihole_config:/etc/pihole
+      # Uncomment the below if you have custom dnsmasq config files that you want to persist. Not needed for most starting fresh with Pi-hole v6. If you're upgrading from v5 you and have used this directory before, you should keep it enabled for the first v6 container start to allow for a complete migration. It can be removed afterwards. Needs environment variable FTLCONF_misc_etc_dnsmasq_d: 'true'
+      # - './etc-dnsmasq.d:/etc/dnsmasq.d'
+
+  pdns-server:
+    hostname: pdns-server
+    build:
+      context: ./pdns-server
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./.env
+        required: true
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "pdns_control rping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 2s
+    restart: always
+    volumes:
+      - pdns_server_data:/data
+
+  powerdns-admin:
+    image: powerdnsadmin/pda-legacy:latest
+    ports:
+      - "9191:80"
+    environment:
+      - SQLALCHEMY_DATABASE_URI=sqlite:////data/powerdns-admin.db
+      - GUNICORN_TIMEOUT=60
+      - GUNICORN_WORKERS=2
+      - GUNICORN_LOGLEVEL=DEBUG
+    env_file:
+      - path: ./.env
+        required: true
+    depends_on:
+      pdns-server:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - powerdns_admin_data:/data
+
+volumes:
+  pihole_config:
+  pdns_server_data:
+  powerdns_admin_data:
